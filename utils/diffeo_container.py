@@ -3,7 +3,7 @@ import torch as t
 import torch.nn as nn
 import math
 
-from distortion import sparse_transform_amplitude, create_grid_sample, diffeo_composition
+from distortion import sparse_transform_amplitude, create_grid_sample, compose_diffeo_from_left
 
 #%%
 class diffeo_container:
@@ -62,7 +62,14 @@ class sparse_diffeo_container(diffeo_container):
 #%%
 class diffeo_compose_container(diffeo_container):
   def __init__(self, diffeo_container: diffeo_container):
-    super().__init__(diffeo_container.x_res, diffeo_container.y_res, t.cat(list(diffeo_container)))
-    self.generators = self.diffeos
-    self.diffeos = []
+    super().__init__(diffeo_container.x_res, diffeo_container.y_res, [t.cat(list(diffeo_container))])
+    self._num_of_generators = len(self.diffeos[0])
 
+  def compose(self):
+    num_of_diffeo_last_level = len(self.diffeos[-1])
+    left = self.diffeos[0].unsqueeze(1).repeat(1, num_of_diffeo_last_level, 1, 1, 1).view(-1, self.x_res, self.y_res, 2)
+    self.diffeos.append(compose_diffeo_from_left(left, self.diffeos[-1].repeat(self._num_of_generators, 1, 1, 1)))
+
+  def __repr__(self):
+    return f"{type(self).__name__}(x_res={self.x_res}, y_res={self.y_res}) with depth={len(self)}"
+# %%
