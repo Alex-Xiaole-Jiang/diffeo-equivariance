@@ -43,7 +43,7 @@ def dense_transform_amplitude(x_length, y_length, truncate = False, amplitude = 
 
 
 
-def sparse_transform_amplitude(x_length, y_length, num_of_terms, amplitude = 1, rng = None, seed = 37, loop = 1, alpha = None):
+def sparse_transform_amplitude(x_cutoff, y_cutoff, num_of_terms, diffeo_amp = 1, rng = None, seed = 37, num_of_diffeo = 1, alpha = None):
   '''
     returns x_length by y_length matrix where num_of_terms elements is random and has flattened norm of 1
     in the case that num_of_terms << x_length * y_length, this matrix is sparse
@@ -55,49 +55,32 @@ def sparse_transform_amplitude(x_length, y_length, num_of_terms, amplitude = 1, 
   A = []
   B = []
 
-  total_num_elem = x_length * y_length
+  total_num_elem = x_cutoff * y_cutoff
   pad_len = total_num_elem - num_of_terms #- 1
 
-  for i in range(loop):
+  for i in range(num_of_diffeo):
 
     A_sign = (rng.integers(2, size = num_of_terms) - 0.5) * 2
     B_sign = (rng.integers(2, size = num_of_terms) - 0.5) * 2
 
     if alpha == None:
-      A_nm = amplitude * rng.dirichlet(np.ones(num_of_terms)) * A_sign
-      B_nm = amplitude * rng.dirichlet(np.ones(num_of_terms)) * B_sign
+      A_nm = diffeo_amp * rng.dirichlet(np.ones(num_of_terms)) * A_sign
+      B_nm = diffeo_amp * rng.dirichlet(np.ones(num_of_terms)) * B_sign
     elif alpha != None:
-      A_nm = amplitude * rng.dirichlet(alpha * np.ones(num_of_terms)) * A_sign
-      B_nm = amplitude * rng.dirichlet(alpha * np.ones(num_of_terms)) * B_sign
+      A_nm = diffeo_amp * rng.dirichlet(alpha * np.ones(num_of_terms)) * A_sign
+      B_nm = diffeo_amp * rng.dirichlet(alpha * np.ones(num_of_terms)) * B_sign
 
     A_nm = np.pad(A_nm, (0, pad_len), 'constant')
-    A_nm = rng.permutation(A_nm).reshape(x_length, y_length)
+    A_nm = rng.permutation(A_nm).reshape(x_cutoff, y_cutoff)
     # A_nm = np.pad(A_nm, (1,0), 'constant').reshape(x_length, y_length)
     A.append(A_nm)
 
     B_nm = np.pad(B_nm, (0, pad_len), 'constant')
-    B_nm = rng.permutation(B_nm).reshape(x_length, y_length)
+    B_nm = rng.permutation(B_nm).reshape(x_cutoff, y_cutoff)
     # B_nm = np.pad(B_nm, (1,0), 'constant').reshape(x_length, y_length)
     B.append(B_nm)
 
   return np.array(A), np.array(B)
-
-
-def jacobian_det(x_map, y_map):
-  '''
-    compute jacobian using finite difference that numpy has built in
-    returns the same shape as x_map and y_map
-    there could be a minus sign because of transpose
-    x, y index is confusing
-  '''
-
-
-  x_dir = np.gradient(x_map, 1, 1)
-  y_dir = np.gradient(y_map, 1, 1)
-
-  jacobian = np.transpose(np.stack([y_dir, x_dir]), axis = (3, 2, 0, 1))
-
-  return np.linalg.det(jacobian)
 
 
 
@@ -173,38 +156,7 @@ def create_grid_sample(x_length: int, y_length: int, A_list: np.array, B_list: n
   
   return flow_grid
 
-class get_diffeomorphism:
-  def __init__(self, x_res: int, y_res: int, A = None, B = None, rng = None, seed = 37):
-    self.x_res = x_res
-    self.y_res = y_res
-    if rng == None:
-      self.rng = np.random.default_rng(seed = seed)
-    else: 
-      self.rng = rng 
-    self.A = A
-    self.B = B
-    if A == None: self.A = []
-    if B == None: self.B = []
-    self.diffeos = []
-    self.sparse_AB_param = []
-
-  def sparse_AB_append(self, x_cutoff, y_cutoff, num_of_terms, diffeo_amp, num_of_diffeo, rng = None, seed = 37, alpha = None):
-    if rng == 'self': rng = self.rng
-    A_nm, B_nm = sparse_transform_amplitude(x_cutoff, y_cutoff, num_of_terms, diffeo_amp, loop = num_of_diffeo, rng = rng, seed = seed, alpha = alpha)
-    
-    self.sparse_AB_param.append({'x_cutoff': x_cutoff, 'y_cutoff': y_cutoff, 'num_of_diffeo':num_of_diffeo, 'diffeo_amp':diffeo_amp, 'sparsity': num_of_terms, 'rng':rng, 'seed':seed, 'alpha':alpha})
-    self.A.append(A_nm)
-    self.B.append(B_nm)
-  
-  def get_all_grid(self):
-    self.diffeos = []
-    for A, B in zip(self.A, self.B):
-      self.diffeos.append(create_grid_sample(self.x_res, self.y_res, A, B))
-  
-  def __getitem__(self, index):
-    return self.diffeos[index[0]][index[1:]]
-
-
+#%%
 class BiasOnly_gridInv(nn.Module):
   def __init__(self, grid):
     super().__init__()
@@ -252,13 +204,36 @@ def find_inv_grid(flow_grid, mode ='bilinear', learning_rate = 0.001, epochs = 1
 
   return flow_grid_inverse_neural, loss_hist
 
+#%%
+def diffeo_composition(diffeo_l, diffeo_r):
+  '''
+  This l stands for left and r for right.
+  The composition is defined as first apply r then l, so we will implement l interpolates r.
+  '''
+  pass
 
+#%%
+def jacobian_det(x_map, y_map):
+  '''
+    compute jacobian using finite difference that numpy has built in
+    returns the same shape as x_map and y_map
+    there could be a minus sign because of transpose
+    x, y index is confusing
+  '''
+
+
+  x_dir = np.gradient(x_map, 1, 1)
+  y_dir = np.gradient(y_map, 1, 1)
+
+  jacobian = np.transpose(np.stack([y_dir, x_dir]), axis = (3, 2, 0, 1))
+
+  return np.linalg.det(jacobian)
 #%%
 # from PIL import Image
 # val_pic = Image.open('val_pic.png')
 # val_pic_tensor = t.load('val_pic_inf.pt')
 
-# A_nm, B_nm = sparse_transform_amplitude(5, 5, 2, amplitude = 1, loop = 1)
+# A_nm, B_nm = sparse_transform_amplitude(5, 5, 2, amplitude = 1, num_of_diffeo = 1)
 # A_nm = np.mean(A_nm, axis = 0)
 # B_nm = np.mean(B_nm, axis = 0)
 
