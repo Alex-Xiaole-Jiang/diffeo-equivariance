@@ -103,7 +103,7 @@ class diffeo_compose_container(diffeo_container):
       right_gen_list =list(self.element_to_index)[-num_of_diffeo_last_level:] * self._num_of_generators
       all_elem_list = [a + b for a, b in zip(left_gen_list, right_gen_list)]
       for index, value in enumerate(all_elem_list):
-        self.element_to_index[value] = (len(self.diffeos), index)
+        self.element_to_index[value] = (len(self.diffeos)-1, index)
 
 
   def __repr__(self):
