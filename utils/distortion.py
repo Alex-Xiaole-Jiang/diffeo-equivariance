@@ -3,6 +3,7 @@ import numpy as np
 import torch as t
 import torch.nn as nn
 import math
+from tqdm import tqdm
 #from torch_perlin_noise import rand_perlin_2d_octaves
 # import matplotlib.pyplot as plt
 
@@ -157,22 +158,23 @@ def create_grid_sample(x_length: int, y_length: int, A_list: np.array, B_list: n
   return flow_grid
 
 #%%
-class BiasOnly_gridInv(nn.Module):
+class add_bias_to_grid(nn.Module):
   def __init__(self, grid):
+    # grid should have the shape of a grid_sample grid, i.e. (Channel, X, Y, 2)
     super().__init__()
     self.grid = grid
-    self.bias = nn.Parameter(t.zeros_like(grid))
+    self.bias = nn.Parameter(t.zeros_like(grid[:,1:-1,1:-1,:]))
   def forward(self):
-    return self.grid + self.bias
+    return self.grid + nn.functional.pad(self.bias, (0,0,1,1,1,1), "constant", 0)
     
 def find_inv_grid(flow_grid, mode ='bilinear', learning_rate = 0.001, epochs = 10000, early_stopping = True):
-  x_length, y_length, _ = flow_grid.squeeze().shape
+  batch, x_length, y_length, _ = flow_grid.shape
   x = t.linspace(-1, 1, steps = x_length)
   y = t.linspace(-1, 1, steps = y_length)
   X, Y = t.meshgrid(x, y, indexing='ij')
-  reference = t.stack((X, Y, X * Y, t.cos(2*math.pi*X) * t.cos(2*math.pi*Y)), dim=0).unsqueeze(0)
+  reference = t.stack((X, Y, X * Y, t.cos(2*math.pi*X) * t.cos(2*math.pi*Y)), dim=0).unsqueeze(0).repeat(batch, 1, 1, 1)
     
-  find_inv_model = BiasOnly_gridInv(t.stack((Y, X), dim=-1).unsqueeze(0))
+  find_inv_model = add_bias_to_grid(t.stack((Y, X), dim=-1).unsqueeze(0).repeat(batch, 1, 1, 1))
   loss_fn = nn.MSELoss()
   optimizer = t.optim.Adam(find_inv_model.parameters(), lr = learning_rate)
 
@@ -180,7 +182,7 @@ def find_inv_grid(flow_grid, mode ='bilinear', learning_rate = 0.001, epochs = 1
   loss_hist = []
   min_loss = 1e30
   early_stopping_count = 0
-  for epoch in range(num_epochs):
+  for epoch in tqdm(range(num_epochs)):
     optimizer.zero_grad()
     output = find_inv_model()
     #distort = t.nn.functional.grid_sample(reference, flow_grid, mode = mode)
@@ -193,10 +195,14 @@ def find_inv_grid(flow_grid, mode ='bilinear', learning_rate = 0.001, epochs = 1
     #loss =  left_loss + right_loss
     loss.backward()
     optimizer.step()
-    if (epoch + 1) % 500 == 0:
+    if (epoch + 1) % 100 == 0:
           loss_hist.append(loss.item())
-          if loss_hist[-1]/min_loss >= 0.95: early_stopping_count += 1
-          if loss_hist[-1] < min_loss: min_loss = loss_hist[-1]
+          if loss_hist[-1]/min_loss >= 1: 
+            early_stopping_count += 1
+            print(f'Early stopping count: {early_stopping_count}')
+          if loss_hist[-1] < min_loss: 
+            min_loss = loss_hist[-1]
+            early_stopping_count = 0
     if early_stopping and early_stopping_count >=5: break
 
   with t.no_grad():
