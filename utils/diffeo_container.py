@@ -1,8 +1,7 @@
 #%%
 import numpy as np
 import torch as t
-import torch.nn as nn
-import math
+
 
 from distortion import sparse_transform_amplitude, create_grid_sample, compose_diffeo_from_left
 #%%
@@ -20,15 +19,21 @@ class diffeo_container:
   def y_res(self): return self._y_res
 
   def up_down_sample(self, new_x_res, new_y_res):
-    x = t.linspace(-1, 1, new_x_res)
-    y = t.linspace(-1, 1, new_y_res)
-    X, Y = t.meshgrid(x, y)
-    id_grid = t.cat([X.unsqueeze(2), Y.unsqueeze(2)], dim = 2).unsqueeze(0)
+    id_grid = self.get_id_grid(x_res = new_x_res, y_res = new_y_res)
     new_diffeo = []
     for diffeos in list(self):
       new_diffeo.append(compose_diffeo_from_left(id_grid.repeat(len(diffeos), 1, 1, 1), diffeos))
     self.children.append(diffeo_container(new_x_res,new_y_res,diffeos = new_diffeo))
     return self.children[-1]
+  
+  def get_id_grid(self, x_res = None, y_res = None):
+    if x_res == None: x_res = self.x_res
+    if y_res == None: y_res = self.y_res
+    x = t.linspace(-1, 1, x_res)
+    y = t.linspace(-1, 1, y_res)
+    X, Y = t.meshgrid(x, y)
+    id_grid = t.cat([X.unsqueeze(2), Y.unsqueeze(2)], dim = 2).unsqueeze(0)
+    return id_grid    
 
   def __getitem__(self, index):
     if isinstance(index, int): return self.diffeos[index]
@@ -67,12 +72,11 @@ class sparse_diffeo_container(diffeo_container):
     self.B.append(B_nm)
   
   def get_all_grid(self):
-    self.diffeos = []
     for A, B in zip(self.A, self.B):
       self.diffeos.append(create_grid_sample(self.x_res, self.y_res, A, B))
 
-  def get_composition(self):
-    self.children.append(diffeo_compose_container(self, level = 1))
+  def get_composition(self, level = 1):
+    self.children.append(diffeo_compose_container(self, level = level))
     return self.children[-1]
 
 
@@ -81,13 +85,26 @@ class diffeo_compose_container(diffeo_container):
   def __init__(self, diffeo_container: diffeo_container, level = 0):
     super().__init__(diffeo_container.x_res, diffeo_container.y_res, [t.cat(list(diffeo_container))])
     self._num_of_generators = len(self.diffeos[0])
+    self.diffeos.insert(0, self.get_id_grid())
+    
+    self.element_to_index = {'g0': (0,0)}
+    self._generator_list = [f'g{i}' for i in range(1, self._num_of_generators + 1)]
+    for index, value in enumerate(self._generator_list):
+      self.element_to_index[value] = (1, index)
     self.compose(level = level)
 
   def compose(self, level = 1):
     for _ in range(level):
       num_of_diffeo_last_level = len(self.diffeos[-1])
-      left = self.diffeos[0].unsqueeze(1).repeat(1, num_of_diffeo_last_level, 1, 1, 1).view(-1, self.x_res, self.y_res, 2)
+      left = self.diffeos[1].unsqueeze(1).repeat(1, num_of_diffeo_last_level, 1, 1, 1).view(-1, self.x_res, self.y_res, 2)
       self.diffeos.append(compose_diffeo_from_left(left, self.diffeos[-1].repeat(self._num_of_generators, 1, 1, 1)))
+
+      left_gen_list = [item for item in self._generator_list for _ in range(num_of_diffeo_last_level)]
+      right_gen_list =list(self.element_to_index)[-num_of_diffeo_last_level:] * self._num_of_generators
+      all_elem_list = [a + b for a, b in zip(left_gen_list, right_gen_list)]
+      for index, value in enumerate(all_elem_list):
+        self.element_to_index[value] = (len(self.diffeos), index)
+
 
   def __repr__(self):
     return f"{type(self).__name__}(x_res={self.x_res}, y_res={self.y_res}) with depth={len(self)}"
