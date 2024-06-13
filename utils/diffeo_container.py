@@ -23,7 +23,9 @@ class diffeo_container:
     new_diffeo = []
     for diffeos in list(self):
       new_diffeo.append(compose_diffeo_from_left(id_grid.repeat(len(diffeos), 1, 1, 1), diffeos))
-    self.children.append(diffeo_container(new_x_res,new_y_res,diffeos = new_diffeo))
+    new_container = diffeo_container(new_x_res,new_y_res,diffeos = new_diffeo)
+    if new_container in self.children: self.children.remove(new_container)
+    self.children.append(new_container)
     return self.children[-1]
   
   def get_id_grid(self, x_res = None, y_res = None):
@@ -40,10 +42,16 @@ class diffeo_container:
     return self.diffeos[index[0]][index[1:]]
   
   def __len__(self):
-    return len(self.diffeos)
+    length = 0
+    for diffeo in self.diffeos:
+      length += len(diffeo)
+    return length
   
   def __repr__(self):
-    return f"{type(self).__name__}(x_res={self.x_res}, y_res={self.y_res})"
+    return f"{type(self).__name__}(x_res={self.x_res}, y_res={self.y_res}, with {len(self)} diffeos)"
+
+  def __eq__(self, other):
+    return type(self) == type(other) and self.x_res == other.x_res and self.y_res == other.y_res and len(self) == len(other)
 
 #%%
 class sparse_diffeo_container(diffeo_container):
@@ -74,9 +82,14 @@ class sparse_diffeo_container(diffeo_container):
   def get_all_grid(self):
     for A, B in zip(self.A, self.B):
       self.diffeos.append(create_grid_sample(self.x_res, self.y_res, A, B))
+    
+  def clear_all_grid(self):
+    self.diffeos = []
 
   def get_composition(self, level = 1):
-    self.children.append(diffeo_compose_container(self, level = level))
+    new_container = diffeo_compose_container(self, level = level)
+    if new_container in self.children: self.children.remove(new_container)
+    self.children.append(new_container)
     return self.children[-1]
 
 
@@ -94,6 +107,11 @@ class diffeo_compose_container(diffeo_container):
     self.compose(level = level)
 
   def compose(self, level = 1):
+    self.diffeos = self.diffeos[0:2]
+    self.element_to_index = self.element_to_index
+    for counter, key in enumerate(self.element_to_index):
+      if counter > self._num_of_generators: del self.element_to_index[key]
+
     for _ in range(level):
       num_of_diffeo_last_level = len(self.diffeos[-1])
       left = self.diffeos[1].unsqueeze(1).repeat(1, num_of_diffeo_last_level, 1, 1, 1).view(-1, self.x_res, self.y_res, 2)
@@ -107,5 +125,5 @@ class diffeo_compose_container(diffeo_container):
 
 
   def __repr__(self):
-    return f"{type(self).__name__}(x_res={self.x_res}, y_res={self.y_res}) with depth={len(self)}"
+    return f"{type(self).__name__}(x_res={self.x_res}, y_res={self.y_res}) with string of generators of length {len(self.diffeos) - 1} and {len(self)} diffeos in total"
 # %%
