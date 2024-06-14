@@ -10,7 +10,9 @@ class diffeo_container:
     self._x_res = x_res
     self._y_res = y_res
     if diffeos == None: self.diffeos = []
-    if diffeos != None: self.diffeos = diffeos
+    if diffeos != None: 
+      self.diffeos = []
+      self.diffeos.append(diffeos)
     self.children = []
 
   @property
