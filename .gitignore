@@ -1,6 +1,8 @@
 imagenet
 data
+process_data
 Untitled.ipynb
 .ipynb_checkpoints
 scratch
 __pycache__
+*.gif

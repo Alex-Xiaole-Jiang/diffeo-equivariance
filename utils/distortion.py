@@ -7,7 +7,7 @@ from tqdm import tqdm
 #from torch_perlin_noise import rand_perlin_2d_octaves
 # import matplotlib.pyplot as plt
 
-def get_version(): print('version neural_test')
+def get_version(): print('version channel mixing')
 
 def dense_transform_amplitude(x_length, y_length, truncate = False, amplitude = 1, rng = None, seed = 37, alpha = None):
   '''
@@ -202,7 +202,7 @@ def find_inv_grid(flow_grid, mode ='bilinear', learning_rate = 0.001, epochs = 1
           loss_hist.append(loss.item())
           if loss_hist[-1]/min_loss >= 1: 
             early_stopping_count += 1
-            print(f'Early stopping count: {early_stopping_count}')
+            # print(f'Early stopping count: {early_stopping_count}')
           if loss_hist[-1] < min_loss: 
             min_loss = loss_hist[-1]
             early_stopping_count = 0
@@ -213,7 +213,7 @@ def find_inv_grid(flow_grid, mode ='bilinear', learning_rate = 0.001, epochs = 1
   
   del find_inv_model
 
-  return flow_grid_inverse_neural, loss_hist
+  return flow_grid_inverse_neural, loss_hist, epoch
 
 #%%
 def compose_diffeo_from_left(diffeo_l: t.tensor, diffeo_r: t.tensor):
@@ -228,6 +228,35 @@ def compose_diffeo_from_left(diffeo_l: t.tensor, diffeo_r: t.tensor):
   product = t.nn.functional.grid_sample(img, diffeo_l) # left multiplication
   product = t.permute(product, (0, 2, 3, 1))
   return product
+
+#%%
+
+class mix_channel_2d(nn.Module):
+  '''copied from nn.Linear code
+  for every pixel x,y, performs a linear transformation from channel to channel
+  input shape bixy where b:batch, i:channel, x:x-coordinate, y:y-coordinate
+  weight shape: icxy where i:channel, c:channel, x,y:...
+  output is a matrix multiplication along the channel dimension: i, ic -> c
+  number of parameter: c * c * x * y --> train on >=c images to be under-parametrized
+  '''
+  __constants__ = ['channels', 'x_resolution', 'y_resolution']
+  channels: int
+  x_res: int
+  y_res: int
+  weight: t.Tensor
+
+  def __init__(self, channels: int, x_res: int, y_res: int, device=None, dtype=None) -> None:
+    factory_kwargs = {'device': device, 'dtype': dtype}
+    super().__init__()
+    self.x_res = x_res
+    self.y_res = y_res
+    self.weight = nn.Parameter(t.empty((channels, channels, x_res, y_res), **factory_kwargs))
+    self.reset_parameters()
+  def reset_parameters(self) -> None:
+    '''see nn.Linear'''
+    nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+  def forward(self, input: t.Tensor) -> t.Tensor:
+    return t.einsum('bixy, icxy -> bcxy', input, self.weight) 
 
 #%%
 def jacobian_det(x_map, y_map):

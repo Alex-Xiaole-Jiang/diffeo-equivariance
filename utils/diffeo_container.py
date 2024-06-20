@@ -3,32 +3,49 @@ import numpy as np
 import torch as t
 
 
-from distortion import sparse_transform_amplitude, create_grid_sample, compose_diffeo_from_left
+from .distortion import sparse_transform_amplitude, create_grid_sample, compose_diffeo_from_left, find_inv_grid
 #%%
 class diffeo_container:
-  def __init__(self, x_res: int, y_res: int, diffeos = None):
+  def __init__(self, x_res: int, y_res: int, diffeos = None, device = t.device('cpu')):
     self._x_res = x_res
     self._y_res = y_res
     if diffeos == None: self.diffeos = []
-    if diffeos != None: 
-      self.diffeos = []
-      self.diffeos.append(diffeos)
-    self.children = []
+    if diffeos != None: self.diffeos = diffeos
+    self.resampled = {} # dict for resampled grid which are container objects
+    self.inverse = None # container for inverse grid
+    self._find_inverse_loss = []
+    self._device = device
+    self.to(device)
 
   @property
   def x_res(self): return self._x_res
   @property
-  def y_res(self): return self._y_res
+  def y_res(self): return self._y_res 
+  @property
+  def device(self): return self._device
+  @property
+  def length(self):
+    length = 0
+    for diffeo in self.diffeos:
+      length += len(diffeo)
+    return length
 
-  def up_down_sample(self, new_x_res, new_y_res):
-    id_grid = self.get_id_grid(x_res = new_x_res, y_res = new_y_res)
-    new_diffeo = []
-    for diffeos in list(self):
-      new_diffeo.append(compose_diffeo_from_left(id_grid.repeat(len(diffeos), 1, 1, 1), diffeos))
-    new_container = diffeo_container(new_x_res,new_y_res,diffeos = new_diffeo)
-    if new_container in self.children: self.children.remove(new_container)
-    self.children.append(new_container)
-    return self.children[-1]
+  def __getitem__(self, index):
+    if isinstance(index, int): return self.diffeos[index]
+    return self.diffeos[index[0]][index[1:]]
+  
+  def __len__(self):
+    return len(self.diffeos)
+  
+  def __repr__(self):
+    return f"{type(self).__name__}(x_res={self.x_res}, y_res={self.y_res}, with {self.length} diffeos)"
+  
+  def to(self, device):
+    self._device = device
+    for index, diffeo in enumerate(self.diffeos): 
+      self.diffeos[index] = self.diffeos[index].to(device)
+    for children in self.resampled.values(): children.to(device)
+    if type(self.inverse) == type(diffeo_container): self.inverse.to(device)
   
   def get_id_grid(self, x_res = None, y_res = None):
     if x_res == None: x_res = self.x_res
@@ -36,29 +53,32 @@ class diffeo_container:
     x = t.linspace(-1, 1, x_res)
     y = t.linspace(-1, 1, y_res)
     X, Y = t.meshgrid(x, y)
-    id_grid = t.cat([X.unsqueeze(2), Y.unsqueeze(2)], dim = 2).unsqueeze(0)
+    id_grid = t.cat([Y.unsqueeze(2), X.unsqueeze(2)], dim = 2).unsqueeze(0)
     return id_grid    
 
-  def __getitem__(self, index):
-    if isinstance(index, int): return self.diffeos[index]
-    return self.diffeos[index[0]][index[1:]]
+  def up_down_sample(self, new_x_res, new_y_res):
+    id_grid = self.get_id_grid(x_res = new_x_res, y_res = new_y_res).to(self.device)
+    new_diffeo = []
+    for diffeos in self.diffeos:
+      new_diffeo.append(compose_diffeo_from_left(id_grid.repeat(len(diffeos), 1, 1, 1), diffeos))
+    self.resampled[f'{new_x_res},{new_y_res}']= diffeo_container(new_x_res,new_y_res,diffeos = new_diffeo)
+    return self.resampled[f'{new_x_res},{new_y_res}']
   
-  def __len__(self):
-    length = 0
+  def get_inverse_grid(self, base_learning_rate = 1000, learning_rate_scaling = 1):
+    inverse = []
     for diffeo in self.diffeos:
-      length += len(diffeo)
-    return length
-  
-  def __repr__(self):
-    return f"{type(self).__name__}(x_res={self.x_res}, y_res={self.y_res}, with {len(self)} diffeos)"
+      lr = base_learning_rate * (1 + learning_rate_scaling * len(diffeo))
+      inv_grid, lost_hist, epoch_num = find_inv_grid(diffeo, learning_rate = lr)
+      inverse.append(inv_grid)
+      self._find_inverse_loss.append({'loss': lost_hist, 'stopping_epoch': epoch_num, 'lr': lr})
+    self.inverse = diffeo_container(self.x_res, self.y_res, diffeos=inverse)
 
-  def __eq__(self, other):
-    return type(self) == type(other) and self.x_res == other.x_res and self.y_res == other.y_res and len(self) == len(other)
+
 
 #%%
 class sparse_diffeo_container(diffeo_container):
-  def __init__(self, x_res: int, y_res: int, A = None, B = None, diffeos = None, rng = None, seed = 37):
-    super().__init__(x_res, y_res, diffeos)
+  def __init__(self, x_res: int, y_res: int, A = None, B = None, diffeos = None, rng = None, seed = 37, device = t.device('cpu')):
+    super().__init__(x_res, y_res, diffeos, device)
     if rng == None:
       self.rng = 'default with seed=37'
       self._rng = np.random.default_rng(seed = seed)
@@ -70,7 +90,7 @@ class sparse_diffeo_container(diffeo_container):
     if A == None: self.A = []
     if B == None: self.B = []
     self.diffeo_params = []
-
+    self.children = []
 
   def sparse_AB_append(self, x_cutoff, y_cutoff, num_of_terms, diffeo_amp, num_of_diffeo, rng = None, seed = 37, alpha = None):
     if rng == 'self': rng = self._rng
@@ -109,7 +129,7 @@ class diffeo_compose_container(diffeo_container):
     self.compose(level = level)
 
   def compose(self, level = 1):
-    self.diffeos = self.diffeos[0:2]
+    if len(self.diffeos) >= 3: self.diffeos = self.diffeos[0:2]
     self.element_to_index = self.element_to_index
     for counter, key in enumerate(self.element_to_index):
       if counter > self._num_of_generators: del self.element_to_index[key]
@@ -127,5 +147,5 @@ class diffeo_compose_container(diffeo_container):
 
 
   def __repr__(self):
-    return f"{type(self).__name__}(x_res={self.x_res}, y_res={self.y_res}) with string of generators of length {len(self.diffeos) - 1} and {len(self)} diffeos in total"
+    return f"{type(self).__name__}(x_res={self.x_res}, y_res={self.y_res}) with strings of generators of length {len(self.diffeos) - 1} and {self.length} diffeos in total"
 # %%
