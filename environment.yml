@@ -26,7 +26,7 @@ dependencies:
   - ca-certificates=2024.6.2=hbcca054_0
   - cached-property=1.5.2=hd8ed1ab_1
   - cached_property=1.5.2=pyha770c72_1
-  - certifi=2024.2.2=pyhd8ed1ab_0
+  - certifi=2024.6.2=pyhd8ed1ab_0
   - cffi=1.16.0=py311hb3a22ac_0
   - charset-normalizer=2.0.4=pyhd3eb1b0_0
   - comm=0.2.2=pyhd8ed1ab_0
@@ -72,6 +72,7 @@ dependencies:
   - hyperframe=6.0.1=pyhd8ed1ab_0
   - icu=73.1=h6a678d5_0
   - idna=3.7=py311h06a4308_0
+  - imageio=2.34.1=pyh4b66e23_0
   - importlib-metadata=7.1.0=pyha770c72_0
   - importlib_metadata=7.1.0=hd8ed1ab_0
   - importlib_resources=6.4.0=pyhd8ed1ab_0
@@ -103,9 +104,11 @@ dependencies:
   - lcms2=2.12=h3be6417_0
   - ld_impl_linux-64=2.38=h1181459_1
   - lerc=3.0=h295c915_0
+  - libblas=3.9.0=1_h86c2bf4_netlib
   - libbrotlicommon=1.0.9=h5eee18b_8
   - libbrotlidec=1.0.9=h5eee18b_8
   - libbrotlienc=1.0.9=h5eee18b_8
+  - libcblas=3.9.0=5_h92ddd45_netlib
   - libclang=14.0.6=default_hc6dbbc7_1
   - libclang13=14.0.6=default_he11475f_1
   - libcublas=12.1.0.26=0
@@ -119,11 +122,14 @@ dependencies:
   - libedit=3.1.20230828=h5eee18b_0
   - libffi=3.4.4=h6a678d5_1
   - libgcc-ng=13.2.0=h77fa898_7
+  - libgfortran-ng=13.2.0=h69a702a_10
+  - libgfortran5=13.2.0=h3d2ce59_10
   - libglib=2.78.4=hdc74915_0
   - libgomp=13.2.0=h77fa898_7
   - libiconv=1.16=h5eee18b_3
   - libidn2=2.3.4=h5eee18b_0
   - libjpeg-turbo=2.0.0=h9bf148f_0
+  - liblapack=3.9.0=5_h92ddd45_netlib
   - libllvm14=14.0.6=hdb19cb5_3
   - libnpp=12.0.2.50=0
   - libnvjitlink=12.1.105=0
@@ -169,7 +175,7 @@ dependencies:
   - nvidia-ml-py=12.555.43=pyhd8ed1ab_0
   - openh264=2.1.1=h4ff587b_0
   - openjpeg=2.4.0=h3ad879b_0
-  - openssl=3.3.0=h4ab18f5_3
+  - openssl=3.3.1=h4ab18f5_0
   - overrides=7.7.0=pyhd8ed1ab_0
   - packaging=23.2=py311h06a4308_0
   - pandocfilters=1.5.0=pyhd8ed1ab_0
@@ -211,6 +217,7 @@ dependencies:
   - rfc3339-validator=0.1.4=pyhd8ed1ab_0
   - rfc3986-validator=0.1.1=pyh9f0ad1d_0
   - rpds-py=0.18.1=py311h5ecf98a_0
+  - scipy=1.13.1=py311h517d4fd_0
   - send2trash=1.8.3=pyh0d859eb_0
   - setuptools=69.5.1=py311h06a4308_0
   - sip=6.7.12=py311h6a678d5_0
