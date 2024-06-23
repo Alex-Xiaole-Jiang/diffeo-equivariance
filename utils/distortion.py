@@ -88,17 +88,18 @@ def sparse_transform_amplitude(x_cutoff, y_cutoff, num_of_terms, diffeo_amp = 1,
 
 def create_grid_sample(x_length: int, y_length: int, A_list: np.array, B_list: np.array) -> t.Tensor:
   '''
-  cos distortion for t.nn.functional.grid_sample, using cos b/c the grid is from -1 to 1
+  sin distortion for t.nn.functional.grid_sample, the grid is from -1 to 1
 
   Args:
   - x_length (int): Length of x-axis of image.
   - y_length (int): Length of y-axis of image.
-  - A_nm (np.array): Square matrix of coefficents. Sets size of cut off
+  - A_nm (np.array): Square matrix of coefficents, for x coordinate distortion
+  - B_nm : same as A_nm but for y coordinate distortion
     Following np.meshgrid, the second index is the x frequency coefficient
 
   Returns:
-  - x_map (np.array): Size `x_length` * `y_length`.
-  - y_map (np.array): Size `x_length` * `y_length`.
+  - torch.Tensor that has shape (1, x_length, y_length, 2) that can be fed into t.nn.functional.grid_sample
+  - the last dimension is length 2 because one is for x and one is for y.
   '''
   flow_grid = []
 
