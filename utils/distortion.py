@@ -1,5 +1,6 @@
 # %%
 import numpy as np
+import torch
 import torch as t
 import torch.nn as nn
 import math
@@ -74,90 +75,76 @@ def sparse_transform_amplitude(x_cutoff, y_cutoff, num_of_terms, diffeo_amp = 1,
     A_nm = np.pad(A_nm, (0, pad_len), 'constant')
     A_nm = rng.permutation(A_nm).reshape(x_cutoff, y_cutoff)
     # A_nm = np.pad(A_nm, (1,0), 'constant').reshape(x_length, y_length)
-    A.append(A_nm)
+    A.append(t.Tensor(A_nm))
 
     B_nm = np.pad(B_nm, (0, pad_len), 'constant')
     B_nm = rng.permutation(B_nm).reshape(x_cutoff, y_cutoff)
     # B_nm = np.pad(B_nm, (1,0), 'constant').reshape(x_length, y_length)
-    B.append(B_nm)
+    B.append(t.Tensor(B_nm))
 
-  return np.array(A), np.array(B)
-
-
+  return t.stack(A), t.stack(B)
 
 
-def create_grid_sample(x_length: int, y_length: int, A_list: np.array, B_list: np.array) -> t.Tensor:
-  '''
-  sin distortion for t.nn.functional.grid_sample, the grid is from -1 to 1
 
-  Args:
-  - x_length (int): Length of x-axis of image.
-  - y_length (int): Length of y-axis of image.
-  - A_nm (np.array): Square matrix of coefficents, for x coordinate distortion
-  - B_nm : same as A_nm but for y coordinate distortion
-    Following np.meshgrid, the second index is the x frequency coefficient
+def create_grid_sample(x_length: int, y_length: int, A_list: torch.Tensor, B_list: torch.Tensor) -> torch.Tensor:
+    '''
+    Sin distortion for torch.nn.functional.grid_sample, the grid is from -1 to 1
 
-  Returns:
-  - torch.Tensor that has shape (1, x_length, y_length, 2) that can be fed into t.nn.functional.grid_sample
-  - the last dimension is length 2 because one is for x and one is for y.
-  '''
-  flow_grid = []
+    Args:
+    - x_length (int): Length of x-axis of image.
+    - y_length (int): Length of y-axis of image.
+    - A_list (torch.Tensor): List of square matrices of coefficients, for x coordinate distortion
+    - B_list (torch.Tensor): Same as A_list but for y coordinate distortion
 
-  for A_nm, B_nm in zip(A_list,B_list):
+    Returns:
+    - torch.Tensor that has shape (N, x_length, y_length, 2) that can be fed into torch.nn.functional.grid_sample
+    - the last dimension is length 2 because one is for x and one is for y.
+    '''
+    flow_grids = []
 
-    # find non-zero coefficient and convert to frequency
-    non_zero_A_arg = np.nonzero(A_nm)
-    freq_A_arg = (np.array(non_zero_A_arg) + 1) * np.pi / 2  # n pi / L
-    max_A_freq = np.max(np.transpose(freq_A_arg), axis = 1)
-    non_zero_B_arg = np.nonzero(B_nm)
-    freq_B_arg = (np.array(non_zero_B_arg) + 1) * np.pi / 2
-    max_B_freq = np.max(np.transpose(freq_B_arg), axis = 1)
+    for A_nm, B_nm in zip(A_list, B_list):
+        non_zero_A_arg = torch.nonzero(A_nm, as_tuple=True)
+        freq_A_arg = (torch.stack(non_zero_A_arg) + 1) * math.pi / 2
+        max_A_freq = torch.max(torch.transpose(freq_A_arg, 1, 0), dim=1).values
 
-    # save time by only computing non-duplicate index
-    unique_A_x, inv_index_A_x = np.unique(freq_A_arg[1], return_inverse = True)
-    unique_A_y, inv_index_A_y = np.unique(freq_A_arg[0], return_inverse = True)
-    unique_B_x, inv_index_B_x = np.unique(freq_B_arg[1], return_inverse = True)
-    unique_B_y, inv_index_B_y = np.unique(freq_B_arg[0], return_inverse = True)
+        non_zero_B_arg = torch.nonzero(B_nm, as_tuple=True)
+        freq_B_arg = (torch.stack(non_zero_B_arg) + 1) * math.pi / 2
+        max_B_freq = torch.max(torch.transpose(freq_B_arg, 1, 0), dim=1).values
 
-    # Create Coordinates
-    x = np.linspace(-1, 1, num = x_length, endpoint = True)
-    y = np.linspace(-1, 1, num = y_length, endpoint = True)
-    X, Y = np.meshgrid(x, y, indexing='ij') # first index is x and second y
+        unique_A_x, inv_index_A_x = torch.unique(freq_A_arg[1], return_inverse=True)
+        unique_A_y, inv_index_A_y = torch.unique(freq_A_arg[0], return_inverse=True)
+        unique_B_x, inv_index_B_x = torch.unique(freq_B_arg[1], return_inverse=True)
+        unique_B_y, inv_index_B_y = torch.unique(freq_B_arg[0], return_inverse=True)
 
-    # Normalization
-    # max_length = max((x_length - 1), (y_length - 1))
-    normalization_A = 1 / (max_A_freq)
-    normalization_B = 1 / (max_B_freq)
-    #np.nan_to_num(normalization_A, copy = False, nan = 1)
-    #np.nan_to_num(normalization_B, copy = False, nan = 1)
+        x = torch.linspace(-1, 1, steps=x_length)
+        y = torch.linspace(-1, 1, steps=y_length)
+        X, Y = torch.meshgrid(x, y, indexing='ij')
 
-    # basis to do outer product, truncate smaller than 1e-15
-    x_basis_A = np.sin(unique_A_x[None, None, :] * (X[:, :, None] + 1))
-    y_basis_A = np.sin(unique_A_y[None, None, :] * (Y[:, :, None] + 1))
-    x_basis_B = np.sin(unique_B_x[None, None, :] * (X[:, :, None] + 1))
-    y_basis_B = np.sin(unique_B_y[None, None, :] * (Y[:, :, None] + 1))
+        normalization_A = 1 / max_A_freq
+        normalization_B = 1 / max_B_freq
 
-    eps = np.finfo(np.float64).eps * 10
-    x_basis_A[np.abs(x_basis_A) < eps] = 0
-    y_basis_A[np.abs(y_basis_A) < eps] = 0
-    x_basis_B[np.abs(x_basis_B) < eps] = 0
-    y_basis_B[np.abs(y_basis_B) < eps] = 0
+        x_basis_A = torch.sin(unique_A_x[None, None, :] * (X[:, :, None] + 1))
+        y_basis_A = torch.sin(unique_A_y[None, None, :] * (Y[:, :, None] + 1))
+        x_basis_B = torch.sin(unique_B_x[None, None, :] * (X[:, :, None] + 1))
+        y_basis_B = torch.sin(unique_B_y[None, None, :] * (Y[:, :, None] + 1))
 
-    # fully vectorized fourier sum
-    X_pert = np.einsum('xyi, i, xyi, i -> xy', y_basis_A[:,:,inv_index_A_y], A_nm[non_zero_A_arg], x_basis_A[:,:,inv_index_A_x], normalization_A)
-    Y_pert = np.einsum('xyi, i, xyi, i -> xy', y_basis_B[:,:,inv_index_B_y], B_nm[non_zero_B_arg], x_basis_B[:,:,inv_index_B_x], normalization_B)
+        eps = torch.finfo(torch.float64).eps * 10
+        x_basis_A[torch.abs(x_basis_A) < eps] = 0
+        y_basis_A[torch.abs(y_basis_A) < eps] = 0
+        x_basis_B[torch.abs(x_basis_B) < eps] = 0
+        y_basis_B[torch.abs(y_basis_B) < eps] = 0
 
 
-    x_map = (X + X_pert)
-    y_map = (Y + Y_pert)
+        X_pert = torch.einsum('xyi, i, xyi, i -> xy', y_basis_A[:, :, inv_index_A_y], A_nm[non_zero_A_arg], x_basis_A[:, :, inv_index_A_x], normalization_A)
+        Y_pert = torch.einsum('xyi, i, xyi, i -> xy', y_basis_B[:, :, inv_index_B_y], B_nm[non_zero_B_arg], x_basis_B[:, :, inv_index_B_x], normalization_B)
 
-    flow_grid_np = np.stack((np.float32(y_map), np.float32(x_map)), axis = -1)
-    flow_grid.append(t.from_numpy(flow_grid_np).unsqueeze(0))
+        x_map = X + X_pert
+        y_map = Y + Y_pert
 
-  flow_grid = t.cat(flow_grid, dim = 0)
-  
-  return flow_grid
+        flow_grid_tensor = torch.stack((y_map, x_map), dim=-1)
+        flow_grids.append(flow_grid_tensor.unsqueeze(0))
 
+    return torch.cat(flow_grids, dim=0)
 #%%
 class add_bias_to_grid(nn.Module):
   def __init__(self, grid):
