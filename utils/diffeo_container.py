@@ -40,6 +40,9 @@ class diffeo_container:
   def __repr__(self):
     return f"{type(self).__name__}(x_res={self.x_res}, y_res={self.y_res}, with {self.length} diffeos)"
   
+  def __call__(self, input):
+    return [t.nn.functional.grid_sample(input, diffeos) for diffeos in self.diffeos]
+  
   def to(self, device):
     self._device = device
     for index, diffeo in enumerate(self.diffeos): 
@@ -53,26 +56,26 @@ class diffeo_container:
     x = t.linspace(-1, 1, x_res)
     y = t.linspace(-1, 1, y_res)
     X, Y = t.meshgrid(x, y)
-    id_grid = t.cat([Y.unsqueeze(2), X.unsqueeze(2)], dim = 2).unsqueeze(0)
+    id_grid = t.cat([Y.unsqueeze(2), X.unsqueeze(2)], dim = 2).unsqueeze(0).to(self.device)
     return id_grid    
 
-  def up_down_sample(self, new_x_res, new_y_res):
+  def up_down_sample(self, new_x_res, new_y_res, mode = 'bilinear'):
     id_grid = self.get_id_grid(x_res = new_x_res, y_res = new_y_res).to(self.device)
     new_diffeo = []
     for diffeos in self.diffeos:
-      new_diffeo.append(compose_diffeo_from_left(id_grid.repeat(len(diffeos), 1, 1, 1), diffeos))
+      new_diffeo.append(compose_diffeo_from_left(id_grid.repeat(len(diffeos), 1, 1, 1), diffeos, mode = mode))
     self.resampled[f'{new_x_res},{new_y_res}']= diffeo_container(new_x_res,new_y_res,diffeos = new_diffeo)
     return self.resampled[f'{new_x_res},{new_y_res}']
   
-  def get_inverse_grid(self, base_learning_rate = 1000, learning_rate_scaling = 1):
+  def get_inverse_grid(self, base_learning_rate = 1000, learning_rate_scaling = 1, mode = 'bilinear'):
     inverse = []
     for diffeo in self.diffeos:
       lr = base_learning_rate * (1 + learning_rate_scaling * len(diffeo))
-      inv_grid, lost_hist, epoch_num = find_inv_grid(diffeo, learning_rate = lr)
+      inv_grid, lost_hist, epoch_num = find_inv_grid(diffeo, learning_rate = lr, mode = mode)
       inverse.append(inv_grid)
       self._find_inverse_loss.append({'loss': lost_hist, 'stopping_epoch': epoch_num, 'lr': lr})
-    self.inverse = diffeo_container(self.x_res, self.y_res, diffeos=inverse)
-
+    self.inverse = diffeo_container(self.x_res, self.y_res, diffeos=inverse, device = self.device)
+    return self.inverse
 
 
 #%%
