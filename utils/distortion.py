@@ -204,7 +204,7 @@ def find_inv_grid(flow_grid, mode ='bilinear', learning_rate = 0.001, epochs = 1
   return flow_grid_inverse_neural, loss_hist, epoch
 
 #%%
-def compose_diffeo_from_left(diffeo_l: t.tensor, diffeo_r: t.tensor):
+def compose_diffeo_from_left(diffeo_l: t.tensor, diffeo_r: t.tensor, mode = 'bilinear'):
   '''
   This l stands for left and r for right.
   The composition is defined as first apply r then l, so we will implement l interpolates r.
@@ -213,7 +213,7 @@ def compose_diffeo_from_left(diffeo_l: t.tensor, diffeo_r: t.tensor):
   if len(diffeo_l.shape) != 4 or len(diffeo_r.shape) != 4 or diffeo_l.shape[0] != diffeo_r.shape[0]:
     raise Exception(f'shape do not match, left:{diffeo_l.shape}, right:{diffeo_r.shape}')
   img = t.permute(diffeo_r, (0, 3, 1, 2))
-  product = t.nn.functional.grid_sample(img, diffeo_l) # left multiplication
+  product = t.nn.functional.grid_sample(img, diffeo_l, mode = mode, padding_mode='border') # left multiplication
   product = t.permute(product, (0, 2, 3, 1))
   return product
 
