@@ -12,8 +12,12 @@ def retrieve_layer_activation(model, input, layer_index):
 
     if len(input) == 3: input = input[None, :, :, :]
 
-    layers = list(model.children())
-    layers_flat = flatten(layers)
+    # layers = list(model.children())
+    # layers_flat = flatten(layers)
+    if hasattr(model, 'encoder'):
+        layers_flat = get_flatten_children(model.encoder)
+    else:
+        layers_flat = get_flatten_children(model)
 
     for index in layer_index:
         handles.append(layers_flat[index - 1].register_forward_hook(getActivation(str(index))))
@@ -22,6 +26,9 @@ def retrieve_layer_activation(model, input, layer_index):
     for handle in handles: handle.remove()
 
     return activation
+
+def get_flatten_children(model):
+    return flatten(list(model.children()))
 
 def flatten(array):
     result = []
