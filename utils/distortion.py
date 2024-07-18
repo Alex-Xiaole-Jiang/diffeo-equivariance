@@ -155,7 +155,7 @@ class add_bias_to_grid(nn.Module):
   def forward(self):
     return self.grid + nn.functional.pad(self.bias, (0,0,1,1,1,1), "constant", 0)
     
-def find_inv_grid(flow_grid, mode ='bilinear', learning_rate = 0.001, epochs = 10000, early_stopping = True):
+def find_inv_grid(flow_grid, mode ='bilinear', learning_rate = 0.001, epochs = 10000, early_stopping = True, align_corners = True):
   device = flow_grid.device
   batch, x_length, y_length, _ = flow_grid.shape
   x = t.linspace(-1, 1, steps = x_length)
@@ -176,9 +176,9 @@ def find_inv_grid(flow_grid, mode ='bilinear', learning_rate = 0.001, epochs = 1
   for epoch in tqdm(range(num_epochs)):
     optimizer.zero_grad()
     output = find_inv_model()
-    distort = t.nn.functional.grid_sample(reference, flow_grid, mode = mode)
+    distort = t.nn.functional.grid_sample(reference, flow_grid, mode = mode, align_corners = align_corners)
     #inv_distort = t.nn.functional.grid_sample(reference, output, mode = mode)
-    restored_left  = t.nn.functional.grid_sample(distort, output, mode = mode)
+    restored_left  = t.nn.functional.grid_sample(distort, output, mode = mode, align_corners = align_corners)
     #restored_right = t.nn.functional.grid_sample(inv_distort, flow_grid, mode = mode)
     left_loss = loss_fn(reference, restored_left)
     #right_loss = loss_fn(reference, restored_right)
@@ -204,7 +204,7 @@ def find_inv_grid(flow_grid, mode ='bilinear', learning_rate = 0.001, epochs = 1
   return flow_grid_inverse_neural, loss_hist, epoch
 
 #%%
-def compose_diffeo_from_left(diffeo_l: t.tensor, diffeo_r: t.tensor, mode = 'bilinear'):
+def compose_diffeo_from_left(diffeo_l: t.tensor, diffeo_r: t.tensor, mode = 'bilinear', align_corners = True):
   '''
   This l stands for left and r for right.
   The composition is defined as first apply r then l, so we will implement l interpolates r.
@@ -213,7 +213,7 @@ def compose_diffeo_from_left(diffeo_l: t.tensor, diffeo_r: t.tensor, mode = 'bil
   if len(diffeo_l.shape) != 4 or len(diffeo_r.shape) != 4 or diffeo_l.shape[0] != diffeo_r.shape[0]:
     raise Exception(f'shape do not match, left:{diffeo_l.shape}, right:{diffeo_r.shape}')
   img = t.permute(diffeo_r, (0, 3, 1, 2))
-  product = t.nn.functional.grid_sample(img, diffeo_l, mode = mode, padding_mode='border') # left multiplication
+  product = t.nn.functional.grid_sample(img, diffeo_l, mode = mode, padding_mode='border', align_corners= align_corners) # left multiplication
   product = t.permute(product, (0, 2, 3, 1))
   return product
 
