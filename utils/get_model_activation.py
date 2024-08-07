@@ -1,4 +1,5 @@
 import torch as t
+from .diffeo_container import diffeo_container
 
 def retrieve_layer_activation(model, input, layer_index):
     activation = {}
@@ -22,10 +23,10 @@ def retrieve_layer_activation(model, input, layer_index):
     for index in layer_index:
         handles.append(layers_flat[index - 1].register_forward_hook(getActivation(str(index))))
 
-    with t.no_grad(): model(input)
+    with t.no_grad(): result = model(input)
     for handle in handles: handle.remove()
 
-    return activation
+    return activation, result
 
 def get_flatten_children(model):
     return flatten(list(model.children()))
@@ -38,3 +39,11 @@ def flatten(array):
         else:
             result.append(element)
     return result
+
+
+def inv_diff_hook(inverse_diffeo):
+    if not isinstance(inverse_diffeo, diffeo_container):        
+        raise Exception('diffeo is not a diffeo_container')
+    def hook(module, input, output):
+        return inverse_diffeo(output, in_inference=True)
+    return hook

@@ -1,6 +1,7 @@
 #%%
 import numpy as np
 import torch as t
+from torch.nn.functional import grid_sample
 
 
 from .distortion import sparse_transform_amplitude, create_grid_sample, compose_diffeo_from_left, find_inv_grid
@@ -40,8 +41,26 @@ class diffeo_container:
   def __repr__(self):
     return f"{type(self).__name__}(x_res={self.x_res}, y_res={self.y_res}, with {self.length} diffeos)"
   
-  def __call__(self, input, mode = 'bilinear', align_corners = True):
-    return [t.nn.functional.grid_sample(input, diffeos, mode = mode, align_corners = align_corners) for diffeos in self.diffeos]
+  def __call__(self, input, mode = 'bilinear', align_corners = True, in_inference = False):
+    if in_inference == False:
+      # not during inference we have freedom with shape 
+      if len(input.shape) == 4:
+      # image have the same batch size as number of diffeo of a particular strength
+      # input shape: batch, channel, x, y
+      # resulting shape: strength, batch, channel, x, y
+        return t.stack([grid_sample(input, diffeos, mode = mode, align_corners = align_corners) for diffeos in self.diffeos], dim = 0)
+      if len(input.shape) == 5:
+      # loops through diffeo and then images
+      # intput shape: img, batch, channel, x, y
+      # resulting shape: img, strength, batch, channel, x, y
+        return t.stack([t.stack([grid_sample(image, diffeos, mode = mode, align_corners = align_corners) for diffeos in self.diffeos], dim = 0) for image in input], dim = 0)
+    
+    if in_inference == True:
+      # all strength of diffeo will be reshaped in the batch dimension
+      # input/output shape: batch, channel, x, y
+      diffeos = t.cat(self.diffeos, dim = 0)
+      output = grid_sample(input, diffeos, mode = mode, align_corners=align_corners)
+      return output
   
   def to(self, device):
     self._device = device
