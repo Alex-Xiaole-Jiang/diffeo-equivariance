@@ -41,9 +41,18 @@ def flatten(array):
     return result
 
 
-def inv_diff_hook(inverse_diffeo):
+def inv_diff_hook(inverse_diffeo, batch_size = None):
     if not isinstance(inverse_diffeo, diffeo_container):        
         raise Exception('diffeo is not a diffeo_container')
     def hook(module, input, output):
-        return inverse_diffeo(output, in_inference=True)
+        if batch_size == None:
+        # normal situation
+            return inverse_diffeo(output, in_inference=True)
+        if batch_size != None:
+            # stack in the batch dimension of the steered result
+            output = t.unflatten(output, 0, (-1, batch_size))
+            ref = output[0]
+            output = t.flatten(output, start_dim = 0, end_dim = 1)
+            output = t.cat([output, inverse_diffeo(ref, in_inference = True)], dim = 0)
+            return output
     return hook

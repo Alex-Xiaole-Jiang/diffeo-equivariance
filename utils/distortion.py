@@ -145,6 +145,14 @@ def create_grid_sample(x_length: int, y_length: int, A_list: torch.Tensor, B_lis
         flow_grids.append(flow_grid_tensor.unsqueeze(0))
 
     return torch.cat(flow_grids, dim=0)
+
+
+def get_id_grid(x_res, y_res, device = t.device('cpu')):
+  x = t.linspace(-1, 1, x_res)
+  y = t.linspace(-1, 1, y_res)
+  X, Y = t.meshgrid(x, y)
+  id_grid = t.cat([Y.unsqueeze(2), X.unsqueeze(2)], dim = 2).unsqueeze(0).to(device)
+  return id_grid
 #%%
 class add_bias_to_grid(nn.Module):
   def __init__(self, grid):

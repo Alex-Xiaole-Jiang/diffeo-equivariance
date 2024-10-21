@@ -1,4 +1,5 @@
 imagenet
+CIFAR10
 data
 scratch_data
 process_data
@@ -7,3 +8,4 @@ Untitled.ipynb
 scratch
 __pycache__
 *.gif
+pyrightconfig.json

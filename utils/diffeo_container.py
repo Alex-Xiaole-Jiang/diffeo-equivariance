@@ -4,7 +4,7 @@ import torch as t
 from torch.nn.functional import grid_sample
 
 
-from .distortion import sparse_transform_amplitude, create_grid_sample, compose_diffeo_from_left, find_inv_grid
+from .distortion import sparse_transform_amplitude, create_grid_sample, compose_diffeo_from_left, find_inv_grid, get_id_grid
 #%%
 class diffeo_container:
   def __init__(self, x_res: int, y_res: int, diffeos = None, device = t.device('cpu')):
@@ -72,10 +72,7 @@ class diffeo_container:
   def get_id_grid(self, x_res = None, y_res = None):
     if x_res == None: x_res = self.x_res
     if y_res == None: y_res = self.y_res
-    x = t.linspace(-1, 1, x_res)
-    y = t.linspace(-1, 1, y_res)
-    X, Y = t.meshgrid(x, y)
-    id_grid = t.cat([Y.unsqueeze(2), X.unsqueeze(2)], dim = 2).unsqueeze(0).to(self.device)
+    id_grid = get_id_grid(x_res, y_res).to(self.device)
     return id_grid    
 
   def up_down_sample(self, new_x_res, new_y_res, mode = 'bilinear', align_corners = False):
@@ -86,11 +83,11 @@ class diffeo_container:
     self.resampled[f'{new_x_res},{new_y_res}']= diffeo_container(new_x_res,new_y_res,diffeos = new_diffeo)
     return self.resampled[f'{new_x_res},{new_y_res}']
   
-  def get_inverse_grid(self, base_learning_rate = 1000, learning_rate_scaling = 1, mode = 'bilinear', align_corners = True):
+  def get_inverse_grid(self, base_learning_rate = 1000, epochs = 10000, learning_rate_scaling = 1, mode = 'bilinear', align_corners = True):
     inverse = []
     for diffeo in self.diffeos:
       lr = base_learning_rate * (1 + learning_rate_scaling * len(diffeo))
-      inv_grid, lost_hist, epoch_num = find_inv_grid(diffeo, learning_rate = lr, mode = mode, align_corners = align_corners)
+      inv_grid, lost_hist, epoch_num = find_inv_grid(diffeo, learning_rate = lr, mode = mode, align_corners = align_corners, epochs = epochs)
       inverse.append(inv_grid)
       self._find_inverse_loss.append({'loss': lost_hist, 'stopping_epoch': epoch_num, 'lr': lr})
     self.inverse = diffeo_container(self.x_res, self.y_res, diffeos=inverse, device = self.device)
